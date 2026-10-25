@@ -1,0 +1,16 @@
+groups:
+- name: sre_runbook_alerts_inc_4fb1577e
+  rules:
+  - alert: OpenAIStreamChunkJitterAnomaly
+    expr: histogram_quantile(0.95, sum(rate(openai_stream_chunk_inter_arrival_seconds_bucket[5m]))
+      by (le)) > 0.03
+    for: 3m
+    labels:
+      severity: critical
+      incident_domain: proxy_buffer_bloat
+      model: gpt-4o
+    annotations:
+      summary: 'Stream chunk inter-arrival jitter exceeds threshold: 125.4ms'
+      description: Severe TCP packet queuing or intermediate reverse proxy response-body
+        buffer bloat observed on SSE stream.
+      runbook_file: runbook.md

@@ -1,0 +1,156 @@
+{
+  "incident_id": "INC-4FB1577E",
+  "domain": "PROXY_BUFFER_BLOAT",
+  "severity": "SEV-3 (Moderate / Latency Spike)",
+  "target_model": "gpt-4o",
+  "theoretical_grounding": "MIT 6.033 (Computer System Engineering: Network Buffering & The End-to-End Argument)",
+  "sli_burns": [
+    {
+      "sli_name": "streaming_ttft_p95_ms",
+      "target_slo": 600.0,
+      "current_value": 262.1,
+      "burn_rate_1h": 1.0,
+      "budget_exhaustion_hours": null,
+      "violates_slo": false
+    },
+    {
+      "sli_name": "streaming_chunk_jitter_p95_ms",
+      "target_slo": 30.0,
+      "current_value": 125.4,
+      "burn_rate_1h": 10.45,
+      "budget_exhaustion_hours": 4.59,
+      "violates_slo": true
+    },
+    {
+      "sli_name": "streaming_http_5xx_error_rate",
+      "target_slo": 0.01,
+      "current_value": 0.0,
+      "burn_rate_1h": 1.0,
+      "budget_exhaustion_hours": null,
+      "violates_slo": false
+    }
+  ],
+  "topology": {
+    "primary_fault_node": "edge_proxy",
+    "impacted_layer": "Enterprise Edge / WAF Proxy",
+    "blast_radius_nodes": [
+      "edge_proxy",
+      "client_app"
+    ],
+    "nodes": {
+      "client_app": {
+        "id": "client_app",
+        "name": "Client SDK / Egress Gateway",
+        "layer": "Client / SDK Egress",
+        "dependencies": [
+          "edge_proxy"
+        ],
+        "healthy": false,
+        "degradation_reason": "Client experiencing high jitter and socket read timeouts."
+      },
+      "edge_proxy": {
+        "id": "edge_proxy",
+        "name": "Enterprise WAF / Reverse Proxy (Envoy/Nginx)",
+        "layer": "Enterprise Edge / WAF Proxy",
+        "dependencies": [
+          "ingress_gateway"
+        ],
+        "healthy": false,
+        "degradation_reason": "Response body buffering enabled; chunked transfer frames aggregated into bursty TCP packets."
+      },
+      "ingress_gateway": {
+        "id": "ingress_gateway",
+        "name": "Global Anycast Ingress / TLS Termination",
+        "layer": "Global Anycast Ingress / Envoy",
+        "dependencies": [
+          "routing_mesh",
+          "rate_limiter"
+        ],
+        "healthy": true,
+        "degradation_reason": null
+      },
+      "rate_limiter": {
+        "id": "rate_limiter",
+        "name": "Distributed Token Bucket (Redis Cluster)",
+        "layer": "Distributed Rate Limiter (Redis Cluster)",
+        "dependencies": [],
+        "healthy": true,
+        "degradation_reason": null
+      },
+      "routing_mesh": {
+        "id": "routing_mesh",
+        "name": "Model Routing & Context Scheduler",
+        "layer": "Model Routing & Scheduling Mesh",
+        "dependencies": [
+          "inference_worker"
+        ],
+        "healthy": true,
+        "degradation_reason": null
+      },
+      "inference_worker": {
+        "id": "inference_worker",
+        "name": "Inference GPU Shards & Paged Attention KV Cache",
+        "layer": "Inference Worker (Triton/vLLM Shard)",
+        "dependencies": [],
+        "healthy": true,
+        "degradation_reason": null
+      }
+    },
+    "invariant_violation": "End-to-End Streaming Invariant: Proxy must deliver SSE byte chunks immediately without HTTP response-body buffering (X-Accel-Buffering: no)."
+  },
+  "circuit_breaker": {
+    "failure_threshold": 5,
+    "recovery_timeout_seconds": 30.0,
+    "half_open_requests": 3,
+    "backoff_base_ms": 250.0,
+    "backoff_max_ms": 8000.0,
+    "jitter_strategy": "decorrelated_full_jitter",
+    "circuit_state": "HALF_OPEN",
+    "calculated_delays": [
+      307.8,
+      521.7,
+      772.4,
+      1039.7,
+      706.1
+    ]
+  },
+  "remediation_steps": [
+    {
+      "step_number": 1,
+      "title": "Audit Ingress & Reverse Proxy Response Buffering Headers",
+      "command": "curl -s -D - -o /dev/null -N https://api.openai.com/v1/models -H 'Authorization: Bearer $OPENAI_API_KEY' | grep -iE '(x-accel-buffering|transfer-encoding)'",
+      "expected_output": "transfer-encoding: chunked",
+      "rollback_command": null,
+      "is_destructive": false,
+      "verification_check": "Verify that chunked transfer encoding is preserved end-to-end without buffering headers."
+    },
+    {
+      "step_number": 2,
+      "title": "Apply Dynamic Nginx / Envoy Streaming Configuration Patch",
+      "command": "cat << 'EOF' > /tmp/stream_proxy_patch.conf\nlocation /v1/chat/completions {\n    proxy_buffering off;\n    proxy_cache off;\n    proxy_read_timeout 300s;\n    proxy_set_header X-Accel-Buffering 'no';\n}\nEOF\nsudo cp /tmp/stream_proxy_patch.conf /etc/nginx/conf.d/streaming.conf",
+      "expected_output": "Config written to /etc/nginx/conf.d/streaming.conf",
+      "rollback_command": "sudo rm -f /etc/nginx/conf.d/streaming.conf && sudo nginx -s reload",
+      "is_destructive": false,
+      "verification_check": "Run `nginx -t` to validate syntax prior to live reload."
+    },
+    {
+      "step_number": 3,
+      "title": "Gracefully Reload Reverse Proxy Configuration",
+      "command": "sudo nginx -s reload || curl -X POST http://127.0.0.1:9901/drain_listeners",
+      "expected_output": "nginx: configuration file /etc/nginx/nginx.conf test is successful",
+      "rollback_command": null,
+      "is_destructive": false,
+      "verification_check": "Verify 0 dropped TCP connections in edge proxy active connection counter."
+    },
+    {
+      "step_number": 4,
+      "title": "Verify Chunk Cadence Recovery via Sentinel Streaming Probe",
+      "command": "sentinel diagnose --model gpt-4o --samples 15 || python -m post_agi_runbook_synthesizer.cli verify ./test_canary_probe.py",
+      "expected_output": "STREAM_HEALTHY / P95 jitter < 30ms",
+      "rollback_command": null,
+      "is_destructive": false,
+      "verification_check": "Assert TTFT < 600ms and inter-chunk jitter P95 < 30ms."
+    }
+  ],
+  "recurrence_fingerprint": "baf9b33c1a3d85c7"
+}
