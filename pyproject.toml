@@ -1,6 +1,6 @@
 [project]
 name = "post-agi-runbook-synthesizer"
-version = "0.1.0"
+version = "0.2.0"
 description = "Automated SRE incident-to-runbook compiler, synthetic canary generator, and alerting synthesizer for distributed AI infrastructure"
 readme = "README.md"
 license = "MIT"

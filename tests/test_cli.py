@@ -38,3 +38,9 @@ def test_cli_synthesize_preset(tmp_path, monkeypatch):
     monkeypatch.setattr(sys, "argv", ver_args)
     ret_ver = main()
     assert ret_ver == 0
+
+    # Test audit-architecture CLI
+    audit_args = ["runbook", "audit-architecture", "--incident", "proxy_buffer_bloat"]
+    monkeypatch.setattr(sys, "argv", audit_args)
+    ret_audit = main()
+    assert ret_audit == 0

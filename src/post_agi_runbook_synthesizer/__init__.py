@@ -4,7 +4,7 @@ Automated SRE incident-to-runbook compiler, synthetic canary generator,
 and alerting synthesizer for distributed AI infrastructure.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 from post_agi_runbook_synthesizer.models import (
     FailureDomain,

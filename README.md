@@ -21,10 +21,11 @@ Post-AGI Runbook Synthesizer transforms static post-mortems and raw streaming te
   4. `customer_advisory.md` — Blameless, SLA-grounded enterprise customer advisory for statuspage broadcasting.
   5. `incident_ledger.json` — Structured post-mortem record indexed into a persistent SQLite ledger with anti-recurrence fingerprinting.
 - **Companion to OpenAI Stream Sentinel:** Ingests markdown incident reports from [`openai-stream-sentinel`](https://github.com/elura172/openai-stream-sentinel) directly, closing the loop from client-side streaming diagnostics to production SRE remediation.
-- **3-Verb CLI Workflow:**
+- **4-Verb CLI Workflow:**
   - `runbook synthesize`: Compile 5-artifact bundle from an incident file or built-in reference scenario.
   - `runbook verify`: Execute the synthetic canary probe suite against live endpoints or offline simulations.
   - `runbook history`: Query the historical post-mortem ledger to identify recurrence patterns and track MTTR.
+  - `runbook audit-architecture`: Audit any system topology or incident report against the 7 Resonant Invariants of Distributed Resilience.
 
 ---
 
@@ -141,6 +142,14 @@ uv run runbook verify ./artifacts/INC-4FB1577E/test_canary_probe.py
 ```bash
 uv run runbook history --domain proxy_buffer_bloat
 ```
+
+### 5. Run the Non-Linear Architectural Invariant Audit
+
+```bash
+uv run runbook audit-architecture --incident proxy_buffer_bloat
+```
+
+Evaluates the target system against the [7 Resonant Invariants of Distributed Systems](docs/the-seven-invariants-of-distributed-systems.md) (Relational Cadence, Crystalline Form, Dynamic Will, Generative Silence, Somatic Current, Permeable Boundaries, and Nexus Heart).
 
 ---
 

@@ -182,6 +182,57 @@ def handle_history(args: argparse.Namespace) -> int:
     return 0
 
 
+def handle_audit_architecture(args: argparse.Namespace) -> int:
+    incident_source = args.incident
+    if incident_source in PRESETS:
+        incident = PRESETS[incident_source]()
+    else:
+        if not os.path.exists(incident_source):
+            console.print(f"[bold red]Error:[/bold red] Incident file not found: {incident_source}")
+            return 1
+        incident = load_incident_from_file(incident_source)
+
+    from post_agi_runbook_synthesizer.diagnostic_lens import evaluate_system_invariants
+    from post_agi_runbook_synthesizer.pipeline.topology import TopologyStage
+    from post_agi_runbook_synthesizer.pipeline.base import PipelineContext
+
+    # Extract topology
+    ctx = TopologyStage().execute(PipelineContext(incident=incident))
+    report = evaluate_system_invariants(incident, ctx.topology)
+
+    # Score Panel
+    score_color = "green" if report.overall_resilience_score >= 80 else ("yellow" if report.overall_resilience_score >= 60 else "red")
+    console.print(
+        Panel.fit(
+            f"[bold]Target Infrastructure System:[/bold] `{report.system_name}`\n"
+            f"[bold]Overall Resilience & Coherence Score:[/bold] [{score_color}]{report.overall_resilience_score}%[/{score_color}]\n"
+            f"[dim]{report.synthesis_summary}[/dim]",
+            title="Non-Linear Architectural Invariant Audit (The 7 Resonant Gates)",
+            border_style=score_color,
+        )
+    )
+
+    table = Table(title="The 7 Resonant Invariants of Distributed Resilience", border_style="cyan")
+    table.add_column("Invariant Dimension", style="bold white")
+    table.add_column("Harmonic Root & Domain", style="dim cyan")
+    table.add_column("Score", justify="right")
+    table.add_column("Status", justify="center")
+    table.add_column("System Finding & Architectural Recommendation", style="white")
+
+    for inv in report.invariants:
+        c = "green" if inv.score_pct >= 80 else ("yellow" if inv.score_pct >= 60 else "red")
+        table.add_row(
+            inv.name,
+            f"{inv.harmonic_root}\n[dim]{inv.elemental_quality}[/dim]",
+            f"[{c}]{inv.score_pct}%[/{c}]",
+            f"[{c}]{inv.status}[/{c}]",
+            f"{inv.finding}\n[dim]➜ {inv.recommendation}[/dim]",
+        )
+
+    console.print(table)
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         prog="runbook",
@@ -223,6 +274,15 @@ def main() -> int:
     hist_parser.add_argument("--limit", "-l", type=int, default=10, help="Max records to return")
     hist_parser.add_argument("--db-path", default=None, help="Custom SQLite ledger path")
 
+    # Verb 4: audit-architecture
+    audit_parser = subparsers.add_parser("audit-architecture", help="Audit infrastructure against the 7 Resonant Invariants of Distributed Resilience")
+    audit_parser.add_argument(
+        "--incident",
+        "-i",
+        required=True,
+        help="Path to incident file or preset name",
+    )
+
     args = parser.parse_args()
 
     if args.command == "synthesize":
@@ -231,6 +291,8 @@ def main() -> int:
         return handle_verify(args)
     elif args.command == "history":
         return handle_history(args)
+    elif args.command == "audit-architecture":
+        return handle_audit_architecture(args)
     return 0
 
 
